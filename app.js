@@ -110,6 +110,7 @@ const total = (arr, type) => round2(arr.filter(x => x.type === type).reduce((a, 
 /* ================= recurrentes ================= */
 function runRecurring() {
   const today = todayStr(), cur = today.slice(0, 7);
+  const before = budgetSnapshot();
   let added = 0;
   for (const r of db.recurring) {
     if (!r.active) continue;
@@ -123,7 +124,11 @@ function runRecurring() {
       added++;
     }
   }
-  if (added) { save(); toast(`↻ ${added} movimiento${added > 1 ? 's' : ''} fijo${added > 1 ? 's' : ''} añadido${added > 1 ? 's' : ''}`); }
+  if (added) {
+    save();
+    toast(`↻ ${added} movimiento${added > 1 ? 's' : ''} fijo${added > 1 ? 's' : ''} añadido${added > 1 ? 's' : ''}`);
+    checkBudgets(before);
+  }
   return added;
 }
 
@@ -226,14 +231,84 @@ function bars(groups, sum, clickable) {
     </${clickable ? 'button' : 'div'}>`).join('')}</div>`;
 }
 
-function budgetBlock(c, spent) {
-  const pct = c.budget ? spent / c.budget * 100 : 0;
-  const left = round2(c.budget - spent);
-  return `<div class="budget ${spent > c.budget ? 'over' : ''}">
-    <div class="bl"><span class="ellipsis">${c.icon} ${esc(c.name)}</span><span class="num">${eur(spent)} <span class="muted" style="font-weight:400">/ ${eur(c.budget)}</span></span></div>
-    <div class="track"><div class="fill" style="width:${Math.min(pct, 100)}%;background:${c.color}"></div></div>
-    <small>${left >= 0 ? `Quedan ${eur(left)}` : `<span class="exp">Te has pasado ${eur(-left)}</span>`} · ${Math.round(pct)}%</small>
+/* ================= presupuestos ================= */
+const LEVELS = [100, 80, 50];
+// Nivel visual: rojo desde el 80 %, negro desde el 100 %
+const budgetLevel = pct => pct >= 100 ? 'black' : pct >= 80 ? 'red' : '';
+
+// Todos los presupuestos definidos: de categoría y de subcategoría
+function budgetTargets() {
+  const out = [];
+  for (const c of catsOf('expense')) {
+    if (c.budget > 0) out.push({ key: c.id, c, s: null, budget: c.budget });
+    for (const s of c.subs) if (s.budget > 0) out.push({ key: `${c.id}/${s.id}`, c, s, budget: s.budget });
+  }
+  return out;
+}
+
+function spentFor(m, c, s) {
+  return round2(db.movements
+    .filter(x => x.type === 'expense' && x.catId === c.id && (!s || x.subId === s.id) && x.date.startsWith(m))
+    .reduce((a, x) => a + x.amount, 0));
+}
+
+// Porcentaje de cada presupuesto en el mes actual (antes de un cambio)
+function budgetSnapshot() {
+  const m = curMonth(), snap = {};
+  for (const t of budgetTargets()) snap[t.key] = spentFor(m, t.c, t.s) / t.budget * 100;
+  return snap;
+}
+
+// Compara con la foto anterior y avisa de los umbrales 50/80/100 % que se acaban de cruzar
+function checkBudgets(before) {
+  const m = curMonth(), alerts = [];
+  for (const t of budgetTargets()) {
+    const spent = spentFor(m, t.c, t.s), pct = spent / t.budget * 100;
+    const level = LEVELS.find(l => (before[t.key] || 0) < l && pct >= l);
+    if (level) alerts.push({ ...t, spent, pct, level });
+  }
+  if (alerts.length) showBudgetAlerts(alerts.sort((a, b) => b.level - a.level));
+}
+
+function showBudgetAlerts(alerts) {
+  const old = $('#sheet');
+  if (old) old.remove();
+  const title = { 100: 'Presupuesto agotado', 80: 'Presupuesto al 80 %', 50: 'Mitad del presupuesto' };
+  const el = document.createElement('div');
+  el.id = 'sheet';
+  el.innerHTML = `<div class="sheet" role="alertdialog" aria-modal="true">
+    ${alerts.map(a => {
+      const left = round2(a.budget - a.spent);
+      return `<div class="alert lvl-${a.level}">
+        <div class="alert-ico">${a.level >= 100 ? '⛔' : a.level >= 80 ? '⚠️' : '🔔'}</div>
+        <div class="grow">
+          <b>${title[a.level]}</b>
+          <div>${a.c.icon} ${esc(a.c.name)}${a.s ? ' › ' + esc(a.s.name) : ''}</div>
+          <small>${eur(a.spent)} de ${eur(a.budget)} (${Math.round(a.pct)} %) · ${left >= 0 ? `quedan ${eur(left)}` : `te has pasado ${eur(-left)}`}</small>
+        </div></div>`;
+    }).join('')}
+    <button class="btn primary" data-act="closeSheet">Entendido</button>
   </div>`;
+  document.body.appendChild(el);
+}
+
+function budgetBlock(c, spent, s) {
+  const budget = s ? s.budget : c.budget;
+  const pct = spent / budget * 100;
+  const left = round2(budget - spent);
+  const lvl = budgetLevel(pct);
+  return `<div class="budget ${s ? 'sub' : ''} ${lvl ? 'lvl-' + lvl : ''}">
+    <div class="bl"><span class="ellipsis">${s ? '↳ ' + esc(s.name) : `${c.icon} ${esc(c.name)}`}</span><span class="num">${eur(spent)} <span class="muted" style="font-weight:400">/ ${eur(budget)}</span></span></div>
+    <div class="track"><div class="fill" style="width:${Math.min(pct, 100)}%;background:${c.color}"></div></div>
+    <small>${left >= 0 ? `Quedan ${eur(left)}` : `Te has pasado ${eur(-left)}`} · ${Math.round(pct)}%</small>
+  </div>`;
+}
+
+// Bloques de presupuesto de una categoría (ella misma + sus subcategorías) para un mes
+function budgetBlocks(c, m) {
+  let html = c.budget > 0 ? budgetBlock(c, spentFor(m, c, null)) : '';
+  for (const s of c.subs) if (s.budget > 0) html += budgetBlock(c, spentFor(m, c, s), s);
+  return html;
 }
 
 /* ================= vistas ================= */
@@ -273,15 +348,12 @@ VIEWS.inicio = () => {
       </div>
       ${drill ? `<h2 style="margin:-2px 0 6px">${drill.icon} ${esc(drill.name)}</h2>` : ''}
       ${chart}
-      ${drill && drill.budget ? `<div style="margin-top:14px">${budgetBlock(drill, sum)}</div>` : ''}
+      ${drill && budgetBlocks(drill, m) ? `<div style="margin-top:14px">${budgetBlocks(drill, m)}</div>` : ''}
     </section>`;
 
   if (!drill) {
-    const bcats = catsOf('expense').filter(c => c.budget > 0);
-    if (bcats.length) {
-      const spent = Object.fromEntries(groups.map(g => [g.id, g.value]));
-      html += `<h3>Presupuestos</h3><section class="card">${bcats.map(c => budgetBlock(c, spent[c.id] || 0)).join('')}</section>`;
-    }
+    const blocks = catsOf('expense').map(c => budgetBlocks(c, m)).join('');
+    if (blocks) html += `<h3>Presupuestos</h3><section class="card">${blocks}</section>`;
 
     // Últimos 6 meses
     const months = [...Array(6)].map((_, i) => addMonths(m, i - 5));
@@ -494,7 +566,7 @@ VIEWS.categorias = type => {
         <div class="updown"><button data-act="catMove" data-id="${c.id}" data-d="-1" ${i ? '' : 'disabled'}>▲</button><button data-act="catMove" data-id="${c.id}" data-d="1" ${i < list.length - 1 ? '' : 'disabled'}>▼</button></div>
         <a href="#categoria/${c.id}" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
           <span class="ico" style="background:${c.color}">${c.icon}</span>
-          <span class="grow"><b class="ellipsis">${esc(c.name)}</b><small>${c.subs.length} subcategorías${c.budget ? ' · Presupuesto ' + eur(c.budget) : ''}</small></span>
+          <span class="grow"><b class="ellipsis">${esc(c.name)}</b><small>${c.subs.length} subcategorías${c.budget ? ' · Presupuesto ' + eur(c.budget) : ''}${c.subs.some(s => s.budget > 0) ? ' · ' + c.subs.filter(s => s.budget > 0).length + ' con presupuesto' : ''}</small></span>
           <span class="muted">›</span>
         </a>
       </div>`).join('')}
@@ -515,10 +587,13 @@ VIEWS.categoria = id => {
     </section>
     <h3>Subcategorías</h3>
     <section class="card flush">${c.subs.map(s => `
-      <div class="row"><span class="dot" style="background:${c.color}"></span><span class="grow">${esc(s.name)}</span>
-        <button class="mini" data-act="subRename" data-id="${c.id}" data-s="${s.id}">Renombrar</button>
-        <button class="mini red" data-act="subDel" data-id="${c.id}" data-s="${s.id}">Borrar</button></div>`).join('') || '<div class="empty" style="padding:16px">Sin subcategorías</div>'}
+      <div class="row"><span class="dot" style="background:${c.color}"></span>
+        <span class="grow"><span class="ellipsis" style="display:block">${esc(s.name)}</span>${c.type === 'expense' && s.budget ? `<small>Presupuesto ${eur(s.budget)}</small>` : ''}</span>
+        ${c.type === 'expense' ? `<button class="mini" data-act="subBudget" data-id="${c.id}" data-s="${s.id}" aria-label="Presupuesto">€</button>` : ''}
+        <button class="mini" data-act="subRename" data-id="${c.id}" data-s="${s.id}" aria-label="Renombrar">✎</button>
+        <button class="mini red" data-act="subDel" data-id="${c.id}" data-s="${s.id}" aria-label="Borrar">✕</button></div>`).join('') || '<div class="empty" style="padding:16px">Sin subcategorías</div>'}
     </section>
+    ${c.type === 'expense' ? `<p class="hint">€ = presupuesto mensual de la subcategoría · ✎ = renombrar · ✕ = borrar. Te avisaré al llegar al 50, 80 y 100 % de cada presupuesto.</p>` : ''}
     <button class="btn secondary" data-act="subAdd" data-id="${c.id}">Añadir subcategoría</button>
     <button class="btn danger" data-act="catDel" data-id="${c.id}">Eliminar categoría</button>`;
 };
@@ -609,6 +684,7 @@ const ACT = {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return toast('Fecha no válida');
     const fields = { type: d.type, amount, catId: d.catId, subId: d.subId, date: d.date, note: d.note.trim() };
     const editing = d._for !== 'new';
+    const before = budgetSnapshot();
     if (editing) {
       Object.assign(db.movements.find(m => m.id === d._for), fields);
     } else {
@@ -627,7 +703,9 @@ const ACT = {
     ui.drill = null;
     toast(editing ? 'Cambios guardados ✓' : `${d.type === 'expense' ? 'Gasto' : 'Ingreso'} guardado ✓`);
     if (editing) history.back(); else location.hash = '#inicio';
+    checkBudgets(before);
   },
+  closeSheet() { const el = $('#sheet'); if (el) el.remove(); },
   fdel(el) {
     if (!confirm('¿Eliminar este movimiento?')) return;
     db.movements = db.movements.filter(m => m.id !== el.dataset.id);
@@ -698,6 +776,15 @@ const ACT = {
     const name = (prompt('Nombre de la subcategoría') || '').trim();
     if (!name) return;
     cat(el.dataset.id).subs.push({ id: uid(), name }); save(); render();
+  },
+  subBudget(el) {
+    const s = subOf(cat(el.dataset.id), el.dataset.s);
+    const v = prompt(`Presupuesto mensual para «${s.name}» (€)\nDéjalo vacío para quitarlo.`, s.budget ? amountStr(s.budget) : '');
+    if (v === null) return;
+    const n = parseAmount(v);
+    if (v.trim() && !(n > 0)) return toast('Importe no válido');
+    s.budget = n > 0 ? n : null;
+    save(); render();
   },
   subRename(el) {
     const s = subOf(cat(el.dataset.id), el.dataset.s);

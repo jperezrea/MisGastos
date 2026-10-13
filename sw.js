@@ -1,6 +1,6 @@
 // Cachea la app para que abra al instante y funcione sin conexión.
 // Al publicar cambios, sube el número de versión.
-const CACHE = 'misgastos-v1';
+const CACHE = 'misgastos-v2';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.json',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 

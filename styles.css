@@ -120,7 +120,32 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: v
 .bar .bl { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; margin-bottom: 6px; }
 .track { height: 10px; background: var(--track); border-radius: 6px; overflow: hidden; }
 .fill { height: 100%; border-radius: 6px; min-width: 3px; }
-.over .fill { background: var(--exp) !important; }
+.budget.sub { padding-left: 14px; }
+.budget.sub .bl { font-size: 14px; }
+.budget.sub .track { height: 7px; }
+/* 80 %: rojo · 100 %: negro */
+.lvl-red .fill { background: var(--exp) !important; }
+.lvl-red small, .lvl-red .num { color: var(--exp); }
+.lvl-black .fill { background: #000 !important; }
+.lvl-black .track { background: color-mix(in srgb, var(--exp) 30%, var(--track)); }
+.lvl-black small { color: var(--text); font-weight: 700; }
+.lvl-black .num { color: var(--text); }
+:root[data-theme="dark"] .lvl-black .fill { box-shadow: inset 0 0 0 1.5px var(--exp); }
+
+/* avisos de presupuesto */
+#sheet { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; justify-content: center; animation: fade .2s; }
+.sheet { background: var(--bg); width: 100%; max-width: 640px; border-radius: 22px 22px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); animation: up .25s ease-out; }
+.alert { display: flex; gap: 12px; align-items: flex-start; background: var(--card); border-radius: 14px; padding: 14px; margin-bottom: 10px; border-left: 5px solid var(--muted); }
+.alert b { display: block; font-size: 17px; margin-bottom: 2px; }
+.alert small { display: block; color: var(--muted); margin-top: 3px; font-size: 13px; }
+.alert-ico { font-size: 26px; line-height: 1; }
+.alert.lvl-50 { border-left-color: #E6C77A; }
+.alert.lvl-80 { border-left-color: var(--exp); }
+.alert.lvl-80 b { color: var(--exp); }
+.alert.lvl-100 { background: #000; color: #fff; border-left-color: var(--exp); }
+.alert.lvl-100 small { color: #cfcfcf; }
+@keyframes fade { from { opacity: 0; } }
+@keyframes up { from { transform: translateY(100%); } }
 
 .empty { text-align: center; padding: 22px 8px 10px; color: var(--muted); }
 .empty .big { font-size: 40px; margin-bottom: 6px; }
