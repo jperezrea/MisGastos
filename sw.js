@@ -1,7 +1,7 @@
 // Guarda la app para que funcione sin conexión.
 // Con internet siempre carga la versión más reciente; sin internet, la guardada.
 // Al publicar cambios, sube el número de versión.
-const CACHE = 'misgastos-v3';
+const CACHE = 'misgastos-v4';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.json',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 

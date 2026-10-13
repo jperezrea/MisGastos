@@ -99,7 +99,7 @@ function save() {
 }
 
 let db = load();
-const ui = { month: curMonth(), drill: null, filter: 'all', draft: null };
+const ui = { month: curMonth(), drill: null, sub: null, showAll: false, filter: 'all', draft: null };
 
 const cat = id => db.categories.find(c => c.id === id);
 const subOf = (c, id) => c && c.subs.find(s => s.id === id);
@@ -193,14 +193,14 @@ function groupBySub(movs, c) {
   return arr;
 }
 
-function donut(groups, sum, label, clickable) {
+function donut(groups, sum, label, act, selId) {
   const R = 74, W = 30, C = 2 * Math.PI * R;
   const gap = groups.length > 1 ? 1.6 : 0;
   let off = 0;
   const arcs = groups.map(g => {
     const len = g.value / sum * C;
-    const a = `<circle class="arc" ${clickable ? `data-act="drill" data-id="${g.id}"` : ''} r="${R}" cx="100" cy="100" fill="none"
-      stroke="${g.color}" stroke-width="${W}" stroke-dasharray="${Math.max(len - gap, 0.5)} ${C}" stroke-dashoffset="${-off}"/>`;
+    const a = `<circle class="arc" ${act ? `data-act="${act}" data-id="${g.id}"` : ''} r="${R}" cx="100" cy="100" fill="none"
+      stroke="${g.color}" stroke-width="${selId && selId === g.id ? W + 8 : W}" opacity="${selId && selId !== g.id ? .35 : 1}" stroke-dasharray="${Math.max(len - gap, 0.5)} ${C}" stroke-dashoffset="${-off}"/>`;
     off += len;
     return a;
   }).join('');
@@ -210,25 +210,25 @@ function donut(groups, sum, label, clickable) {
     <text x="100" y="118" class="dv">${eur(sum)}</text></svg></div>`;
 }
 
-function legend(groups, sum, clickable) {
+function legend(groups, sum, act, selId) {
   return `<div class="legend">${groups.map(g => `
-    <${clickable ? `button data-act="drill" data-id="${g.id}"` : 'div'} class="li">
+    <button ${act ? `data-act="${act}" data-id="${g.id}"` : ''} class="li ${selId === g.id ? 'sel' : ''}">
       <span class="dot" style="background:${g.color}"></span>
       <span class="grow ellipsis">${g.icon ? g.icon + ' ' : ''}${esc(g.name)}</span>
       <span class="num">${eur(g.value)}</span>
       <span class="pct">${Math.round(g.value / sum * 100)}%</span>
-      ${clickable ? '<span class="chev">›</span>' : ''}
-    </${clickable ? 'button' : 'div'}>`).join('')}</div>`;
+      <span class="chev">${act === 'drill' ? '›' : selId === g.id ? '✓' : ''}</span>
+    </button>`).join('')}</div>`;
 }
 
-function bars(groups, sum, clickable) {
+function bars(groups, sum, act, selId) {
   const max = Math.max(...groups.map(g => g.value));
   return `<div class="bars">${groups.map(g => `
-    <${clickable ? `button data-act="drill" data-id="${g.id}"` : 'div'} class="bar">
+    <button ${act ? `data-act="${act}" data-id="${g.id}"` : ''} class="bar ${selId === g.id ? 'sel' : ''}">
       <div class="bl"><span class="ellipsis">${g.icon ? g.icon + ' ' : ''}${esc(g.name)}</span>
       <span><span class="num">${eur(g.value)}</span> <span class="muted" style="font-size:13px">${Math.round(g.value / sum * 100)}%</span></span></div>
       <div class="track"><div class="fill" style="width:${g.value / max * 100}%;background:${g.color}"></div></div>
-    </${clickable ? 'button' : 'div'}>`).join('')}</div>`;
+    </button>`).join('')}</div>`;
 }
 
 /* ================= presupuestos ================= */
@@ -314,10 +314,63 @@ function budgetBlocks(c, m) {
 /* ================= vistas ================= */
 const VIEWS = {};
 
+// Lista de movimientos del mes con filtros por categoría y subcategoría
+function movementsSection(m, movs, fc, fs) {
+  const chip = (act, id, label, on, color) =>
+    `<button class="chip sm ${on ? 'on' : ''}" style="--c:${color || 'var(--accent)'}" data-act="${act}" data-id="${id}">${label}</button>`;
+
+  // Solo las categorías con movimientos este mes (gastos primero) y la seleccionada
+  const used = new Set(movs.map(x => x.catId));
+  const cats = [...catsOf('expense'), ...catsOf('income')].filter(c => used.has(c.id) || (fc && c.id === fc.id));
+  let html = `<div id="movs" class="cardhead" style="margin:22px 4px 8px"><h3 style="margin:0">Movimientos</h3>
+    ${movs.length ? `<a class="link" href="#mes/${m}">Carpeta del mes ›</a>` : ''}</div>`;
+  if (cats.length) {
+    html += `<div class="chips scroll">${chip('fcatsel', '', 'Todas', !fc)}${cats.map(c =>
+      chip('fcatsel', c.id, `${c.icon} ${esc(c.name)}`, fc && fc.id === c.id, c.color)).join('')}</div>`;
+  }
+  if (fc) {
+    const usedS = new Set(movs.filter(x => x.catId === fc.id).map(x => subOf(fc, x.subId) ? x.subId : '_'));
+    const subs = fc.subs.filter(s => usedS.has(s.id) || (fs && fs.id === s.id));
+    if (usedS.has('_')) subs.push({ id: '_', name: 'Sin subcategoría' });
+    if (subs.length) {
+      html += `<div class="chips scroll">${chip('fsubsel', '', 'Todas', !fs, fc.color)}${subs.map(s =>
+        chip('fsubsel', s.id, esc(s.name), fs && fs.id === s.id, fc.color)).join('')}</div>`;
+    }
+  }
+
+  let list = movs;
+  if (fc) list = list.filter(x => x.catId === fc.id);
+  if (fs) list = list.filter(x => fs.id === '_' ? !subOf(fc, x.subId) : x.subId === fs.id);
+  list = [...list].sort(byDateDesc);
+
+  if (!list.length) return html + `<section class="card empty" style="padding:18px">Sin movimientos${fc ? ' con este filtro' : ' este mes'}</section>`;
+
+  const net = round2(total(list, 'income') - total(list, 'expense'));
+  html += `<p class="hint" style="margin:6px 4px 0">${list.length} movimiento${list.length === 1 ? '' : 's'} · <b class="${net >= 0 ? 'inc' : 'exp'}">${net > 0 ? '+' : ''}${eur(net)}</b></p>`;
+
+  const LIMIT = 10;
+  const shown = fc || ui.showAll ? list : list.slice(0, LIMIT);
+  html += dayGroups(shown);
+  if (shown.length < list.length) html += `<button class="btn secondary" data-act="showAll">Ver los ${list.length} movimientos</button>`;
+  return html;
+}
+
+// Movimientos agrupados por día, con el neto de cada día
+function dayGroups(list) {
+  return [...new Set(list.map(x => x.date))].map(d => {
+    const dl = list.filter(x => x.date === d);
+    const net = round2(total(dl, 'income') - total(dl, 'expense'));
+    return `<div class="dayhead"><span>${dayLabel(d)}</span><span>${net > 0 ? '+' : ''}${eur(net)}</span></div>
+      <section class="card flush">${dl.map(movRow).join('')}</section>`;
+  }).join('');
+}
+
 VIEWS.inicio = () => {
   const m = ui.month, movs = inMonth(m);
   const inc = total(movs, 'income'), exp = total(movs, 'expense');
-  const drill = ui.drill && cat(ui.drill);
+  const fc = ui.drill && cat(ui.drill);                 // categoría filtrada (gasto o ingreso)
+  const fs = fc && ui.sub ? subOf(fc, ui.sub) || (ui.sub === '_' ? { id: '_' } : null) : null;
+  const drill = fc && fc.type === 'expense' ? fc : null; // la gráfica solo desglosa gastos
   const pie = db.settings.chart !== 'bar';
   const groups = drill ? groupBySub(movs, drill) : groupByCat(movs);
   const sum = round2(groups.reduce((a, g) => a + g.value, 0));
@@ -326,9 +379,10 @@ VIEWS.inicio = () => {
   if (!sum) {
     chart = `<div class="empty"><div class="big">🌱</div>${drill ? 'Sin gastos en esta categoría' : 'Aún no hay gastos este mes'}<br><a href="#nuevo">Añadir un gasto</a></div>`;
   } else if (pie) {
-    chart = donut(groups, sum, drill ? drill.name : 'Gastos del mes', !drill) + legend(groups, sum, !drill);
+    chart = donut(groups, sum, drill ? drill.name : 'Gastos del mes', drill ? 'subsel' : 'drill', fs && fs.id) +
+      legend(groups, sum, drill ? 'subsel' : 'drill', fs && fs.id);
   } else {
-    chart = bars(groups, sum, !drill);
+    chart = bars(groups, sum, drill ? 'subsel' : 'drill', fs && fs.id);
   }
 
   let html = `
@@ -369,11 +423,7 @@ VIEWS.inicio = () => {
     </section>`;
   }
 
-  const list = (drill ? movs.filter(x => x.catId === drill.id) : movs).sort(byDateDesc);
-  const shown = drill ? list : list.slice(0, 5);
-  html += `<div class="cardhead" style="margin:22px 4px 8px"><h3 style="margin:0">${drill ? 'Movimientos' : 'Últimos movimientos'}</h3>
-    ${list.length ? `<a class="link" href="#mes/${m}">Ver mes ›</a>` : ''}</div>
-    <section class="card flush">${shown.length ? shown.map(movRow).join('') : '<div class="empty" style="padding:18px">Sin movimientos</div>'}</section>`;
+  html += movementsSection(m, movs, fc, fs);
   return html;
 };
 
@@ -417,13 +467,7 @@ VIEWS.mes = m => {
       <button data-act="filter" data-v="income" class="${f === 'income' ? 'on' : ''}">Ingresos</button>
     </div>`;
   if (!list.length) html += `<div class="card empty"><div class="big">📭</div>Carpeta vacía<br><a href="#nuevo">Añadir movimiento</a></div>`;
-  const days = [...new Set(list.map(x => x.date))];
-  for (const d of days) {
-    const dl = list.filter(x => x.date === d);
-    const net = round2(total(dl, 'income') - total(dl, 'expense'));
-    html += `<div class="dayhead"><span>${dayLabel(d)}</span><span>${net > 0 ? '+' : ''}${eur(net)}</span></div>
-      <section class="card flush">${dl.map(movRow).join('')}</section>`;
-  }
+  html += dayGroups(list);
   html += `<button class="btn secondary" data-act="setmonth" data-m="${m}" data-go="1">Ver gráfica del mes</button>`;
   return html;
 };
@@ -657,11 +701,26 @@ function importBackup(file) {
 }
 
 /* ================= acciones ================= */
+function keepMovsInView() {
+  const el = $('#movs');
+  if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 8);
+  // Desplaza cada fila de filtros para que se vea el elegido
+  document.querySelectorAll('.chips.scroll').forEach(row => {
+    const on = row.querySelector('.chip.on');
+    if (on) row.scrollLeft = on.offsetLeft - row.offsetLeft - (row.clientWidth - on.offsetWidth) / 2;
+  });
+}
+
 const ACT = {
-  month(el) { ui.month = addMonths(ui.month, Number(el.dataset.d)); ui.drill = null; render(); },
-  setmonth(el) { ui.month = el.dataset.m; ui.drill = null; if (el.dataset.go) location.hash = '#inicio'; else render(); },
-  drill(el) { if (el.dataset.id !== '_') { ui.drill = el.dataset.id; render(); } },
-  undrill() { ui.drill = null; render(); },
+  month(el) { ui.month = addMonths(ui.month, Number(el.dataset.d)); ui.showAll = false; render(); },
+  setmonth(el) { ui.month = el.dataset.m; ui.showAll = false; if (el.dataset.go) location.hash = '#inicio'; else render(); },
+  drill(el) { if (el.dataset.id !== '_') { ui.drill = el.dataset.id; ui.sub = null; render(); } },
+  undrill() { ui.drill = null; ui.sub = null; render(); },
+  subsel(el) { ui.sub = ui.sub === el.dataset.id ? null : el.dataset.id; render(); },
+  // Filtros de la lista: tras redibujar, mantiene la lista a la vista
+  fcatsel(el) { ui.drill = el.dataset.id || null; ui.sub = null; render(); keepMovsInView(); },
+  fsubsel(el) { ui.sub = el.dataset.id || null; render(); keepMovsInView(); },
+  showAll() { ui.showAll = true; render(); },
   chart(el) { db.settings.chart = el.dataset.v; save(); render(); },
   filter(el) { ui.filter = el.dataset.v; render(); },
 
@@ -701,6 +760,7 @@ const ACT = {
     ui.draft = null;
     ui.month = d.date.slice(0, 7);
     ui.drill = null;
+    ui.sub = null;
     toast(editing ? 'Cambios guardados ✓' : `${d.type === 'expense' ? 'Gasto' : 'Ingreso'} guardado ✓`);
     if (editing) history.back(); else location.hash = '#inicio';
     checkBudgets(before);

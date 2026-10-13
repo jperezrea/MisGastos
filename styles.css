@@ -114,7 +114,10 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: v
 .legend .li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); width: 100%; text-align: left; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .li .pct { color: var(--muted); font-size: 13px; width: 42px; text-align: right; flex: none; }
-.chev { color: var(--muted); opacity: .6; flex: none; }
+.chev { color: var(--muted); opacity: .6; flex: none; min-width: 10px; }
+.legend .li.sel { background: var(--chip); border-radius: 10px; margin: 0 -8px; padding-left: 8px; padding-right: 8px; width: calc(100% + 16px); }
+.legend .li.sel .chev { color: var(--accent); opacity: 1; }
+.bars .bar.sel .bl { font-weight: 700; }
 
 .bars .bar { padding: 8px 0; display: block; width: 100%; text-align: left; }
 .bar .bl { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; margin-bottom: 6px; }
@@ -201,6 +204,9 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: v
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 9px 13px; border-radius: 22px; background: var(--card); font-size: 15px; border: 1.5px solid transparent; }
+.chips.scroll { flex-wrap: nowrap; overflow-x: auto; margin: 8px -16px 0; padding: 2px 16px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.chips.scroll::-webkit-scrollbar { display: none; }
+.chip.sm { padding: 7px 12px; font-size: 14px; white-space: nowrap; flex: none; }
 .chip.on { background: color-mix(in srgb, var(--c) 18%, var(--card)); border-color: var(--c); font-weight: 600; }
 
 .fields { padding: 0 16px; }
