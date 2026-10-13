@@ -1,11 +1,15 @@
-// Cachea la app para que abra al instante y funcione sin conexión.
+// Guarda la app para que funcione sin conexión.
+// Con internet siempre carga la versión más reciente; sin internet, la guardada.
 // Al publicar cambios, sube el número de versión.
-const CACHE = 'misgastos-v2';
+const CACHE = 'misgastos-v3';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.json',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' evita copiar archivos antiguos de la caché del navegador
+  e.waitUntil(caches.open(CACHE)
+    .then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -14,15 +18,20 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
-// Sirve desde caché y actualiza en segundo plano (la versión nueva se ve en la siguiente apertura)
+// Primero la red (sin caché del navegador); si falla o tarda más de 4 s, la copia guardada
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(caches.open(CACHE).then(async cache => {
-    const cached = await cache.match(e.request, { ignoreSearch: true });
-    const fresh = fetch(e.request).then(res => {
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    const network = fetch(e.request, { cache: 'no-cache' }).then(res => {
       if (res.ok) cache.put(e.request, res.clone());
       return res;
-    }).catch(() => cached);
-    return cached || fresh;
-  }));
+    });
+    const timeout = new Promise(r => setTimeout(r, 4000));
+    try {
+      const res = await Promise.race([network, timeout]);
+      if (res) return res;
+    } catch (err) { /* sin conexión */ }
+    return (await cache.match(e.request, { ignoreSearch: true })) || network;
+  })());
 });
