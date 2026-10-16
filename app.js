@@ -56,7 +56,6 @@ const SEED_EXPENSE = [
   ['Seguros', '🛡️', ['Vida', 'Hogar', 'Coche', 'Responsabilidad civil', 'Otros']],
   ['Transporte', '🚗', ['Gasolina', 'Lavado', 'Parking', 'Bus/Metro/Uber', 'Multas', 'Otros']],
   ['Compra', '🛒', ['Casa', 'Personal', 'Moda', 'Otros']],
-  ['Bebé', '👶', ['Guardería/Cuidado', 'Equipamiento', 'Otros']],
   ['Salud y forma física', '💪', ['Farmacia', 'Deporte', 'Otros']],
   ['Ocio y social', '🎉', ['Suscripciones', 'Social', 'Ocio', 'Viajes', 'Regalos', 'Restaurantes', 'Otros']],
   ['Trabajo y formación', '💼', ['ICOMEM', 'Congresos/Cursos', 'Otros']],
