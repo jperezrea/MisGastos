@@ -566,7 +566,7 @@ VIEWS.fijo = id => {
 
 VIEWS.ajustes = () => {
   const st = db.settings;
-  const y = curMonth().slice(0, 4);
+  const years = [...new Set([curMonth(), ...db.movements.map(x => x.date)].map(d => d.slice(0, 4)))].sort().reverse();
   const seg = (key, opts) => `<div class="seg">${opts.map(([v, l]) =>
     `<button data-act="setting" data-k="${key}" data-v="${v}" class="${st[key] === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   return `<h1>Ajustes</h1>
@@ -586,7 +586,7 @@ VIEWS.ajustes = () => {
 
     <h3>Exportar a Excel (CSV)</h3>
     <section class="card flush menu">
-      <button class="row" data-act="exportYear" data-y="${y}"><span class="ico" style="background:#B9DDB033">📊</span><span class="grow">Año ${y}</span><span class="muted">›</span></button>
+      ${years.map(y => `<button class="row" data-act="exportYear" data-y="${y}"><span class="ico" style="background:#B9DDB033">📊</span><span class="grow">Año ${y}</span><span class="muted">›</span></button>`).join('')}
       <button class="row" data-act="exportAll"><span class="ico" style="background:#B9DDB033">📊</span><span class="grow">Todos los movimientos</span><span class="muted">›</span></button>
     </section>
     <p class="hint">Cada carpeta de mes también tiene su botón CSV arriba a la derecha.</p>
